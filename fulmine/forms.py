@@ -1,6 +1,8 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
+from fulmine.models import parse_scope
+
 class AuthorizationForm(forms.Form):
     response_type = forms.ChoiceField(
         choices=[('code', 'code'), ('token', 'token')])
@@ -8,6 +10,10 @@ class AuthorizationForm(forms.Form):
     redirect_uri = forms.CharField(required=False)
     scope = forms.CharField(required=False)
     state = forms.CharField(required=False)
+
+    def clean_scope(self):
+        scope = self.cleaned_data['scope']
+        return parse_scope(scope)
 
 
 class TokenForm(forms.Form):
@@ -45,5 +51,9 @@ class TokenForm(forms.Form):
     clean_code = _required_on_grant_types('code', ['authorization_code'])
     clean_username = _required_on_grant_types('username', ['password'])
     clean_password = _required_on_grant_types('password', ['password'])
-    clean_scope = _required_on_grant_types('scope', ['password', 'client_credentials'])
+    _pre_clean_scope = _required_on_grant_types('scope', ['password', 'client_credentials'])
     clean_refresh_token = _required_on_grant_types('refresh_token', ['refresh_token'])
+
+    def clean_scope(self):
+        scope = self._pre_clean_scope()
+        return parse_scope(scope)

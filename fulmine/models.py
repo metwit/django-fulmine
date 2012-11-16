@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 from urllib import urlencode
 from urlparse import parse_qs, urlparse, urlunparse
 
@@ -8,6 +9,7 @@ from django.contrib.auth import (
     BACKEND_SESSION_KEY as CONTRIB_AUTH_BACKEND_SESSION_KEY,
 )
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.importlib import import_module
 
@@ -30,6 +32,30 @@ def auth_code_expires():
     delta = timedelta(seconds=AUTH_CODE_EXPIRE_SECONDS)
     return now + delta
 
+class SeparatedValuesField(models.TextField):
+    __metaclass__ = models.SubfieldBase
+
+    def __init__(self, *args, **kwargs):
+        self.separator = kwargs.pop('separator', ' ')
+        super(SeparatedValuesField, self).__init__(*args, **kwargs)
+
+    def to_python(self, value):
+        if not value:
+            return
+        if isinstance(value, list):
+            return value
+        return value.split(self.separator)
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        if not value:
+            return
+        return self.separator.join([unicode(s) for s in value])
+
+    def value_to_string(self, obj):
+        value = self._get_val_from_obj(obj)
+        return self.get_db_prep_value(value)
+
+
 class AuthorizationGrantManager(models.Manager):
     def active(self):
         return self.filter(revoked=False)
@@ -39,7 +65,7 @@ class AuthorizationGrant(models.Model):
     client_id = models.CharField(max_length=CLIENT_ID_LENGTH, db_index=True)
     auth_backend = models.CharField(max_length=80)
     user = models.ForeignKey(User, db_index=True)
-    scope = models.CharField(max_length=300)
+    scope = SeparatedValuesField(max_length=300)
     revoked = models.BooleanField(default=False)
 
     objects = AuthorizationGrantManager()
@@ -287,3 +313,14 @@ class AuthorizationRequest(object):
 def get_django_session(session_key):
     engine = import_module(settings.SESSION_ENGINE)
     return engine.SessionStore(session_key)
+
+scope_re = re.compile(r'^[!#-[\]-~]+$')
+
+def parse_scope(scope):
+    if scope:
+        scopes = scope.split(' ')
+        if any(scope_re.match(s) is None for s in scopes):
+            raise ValidationError('invalid scope')
+        return scopes
+    else:
+        return []

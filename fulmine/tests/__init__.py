@@ -6,6 +6,7 @@ from django.conf import settings, UserSettingsHolder
 from django.contrib.auth.models import User
 from django.test import Client, RequestFactory, TestCase
 
+from fulmine.forms import TokenForm
 from fulmine.middleware import BearerAuthMiddleware
 from fulmine.models import AuthorizationGrant
 from fulmine.timeutils import mock_time
@@ -90,7 +91,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='1234',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -135,7 +136,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='invalid',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -153,7 +154,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='invalid',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.post(
@@ -172,7 +173,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='1234',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -213,7 +214,7 @@ class Rfc6749Test(TestCase):
             response_type='token',
             client_id='1234',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -254,7 +255,7 @@ class Rfc6749Test(TestCase):
             response_type='token',
             client_id='1234',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -297,7 +298,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='1234',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -343,7 +344,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='public',
             redirect_uri=redirect_uri,
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         self.client.get('/authorize/', data=args,
@@ -397,7 +398,7 @@ class Rfc6749Test(TestCase):
             response_type='token',
             client_id='public',
             redirect_uri='http://example.com/destination?par1=val1',
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         response = self.client.get(
@@ -447,7 +448,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='public',
             redirect_uri=redirect_uri,
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         self.client.get('/authorize/', data=args,
@@ -499,7 +500,7 @@ class Rfc6749Test(TestCase):
             response_type='code',
             client_id='public',
             redirect_uri=redirect_uri,
-            scope='read_all,write_all',
+            scope='read_all write_all',
             state='abcdef1234567890'
         )
         self.client.get('/authorize/', data=args,
@@ -611,3 +612,56 @@ class MiddlewareTest(TestCase):
         )
         self.middleware.process_request(request=request)
         self.assertIsNone(request.client_id)
+
+
+class FormsTest(TestCase):
+
+    def test_valid_scope(self):
+        scopes = [
+            ('aaa bbb ccc', ['aaa', 'bbb', 'ccc']),
+            ('aaa', ['aaa']),
+            ('aaa aaa', ['aaa']),
+            ('aaa aaa bbb', ['aaa', 'bbb']),
+            ('bbb aaa ccc', ['aaa', 'bbb', 'ccc']),
+            ('aaa,bbb', ['aaa,bbb']),
+            ('aaa,bbb ccc', ['aaa,bbb', 'ccc']),
+            ('', []),
+        ]
+        form_data = dict(
+            grant_type='authorization_code',
+            code='xxx',
+            redirect_uri='http://example.com/',
+            client_id='123',
+        )
+        for scope_arg, scope in scopes:
+            form_data['scope'] = scope_arg
+            form = TokenForm(form_data)
+            self.assertTrue(form.is_valid(),
+                "scope string %r should validate" % scope_arg)
+            self.assertEqual(set(form.cleaned_data['scope']),
+                             set(scope),
+                             "scope string %r should result "
+                             "in scope set %r, not %r" %
+                             (scope_arg, scope,
+                                form.cleaned_data['scope']))
+
+    def test_invalid_scope(self):
+        scopes = [
+            'aaa   bbb    ccc',
+            'aaa\\bbb',
+            '"b"',
+            'a\nc',
+            'a\x00b',
+        ]
+        form_data = dict(
+            grant_type='authorization_code',
+            code='xxx',
+            redirect_uri='http://example.com/',
+            client_id='123',
+        )
+        for scope_arg in scopes:
+            form_data['scope'] = scope_arg
+            form = TokenForm(form_data)
+            self.assertFalse(form.is_valid(),
+                "scope string %r should result in an error" % scope_arg)
+            self.assertIn('scope', form.errors)
