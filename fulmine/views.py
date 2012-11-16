@@ -161,7 +161,32 @@ class OAuth2Token(object):
         )
 
     def _password(self, request, form):
-        raise NotImplementedError()
+        client_id = self.client_for_request(request,
+                                            form.cleaned_data['client_id'])
+
+        if not client_id:
+            return OAuth2Error('invalid_client')
+
+        from django.contrib.auth import authenticate
+        user = authenticate(username=form.cleaned_data['username'],
+                            password=form.cleaned_data['password'])
+        if not user:
+            raise OAuth2Error('invalid_grant')
+
+        grant = AuthorizationGrant()
+        grant.user = user
+        grant.auth_backend = user.backend
+        grant.client_id = client_id
+        grant.scope = form.cleaned_data['scope']
+
+        expires_in = self.expires_in(grant)
+        access_token = grant.new_access_token(expires_in)
+        return dict(
+            access_token=access_token,
+            token_type='bearer',
+            expires_in=expires_in,
+            refresh_token=None,
+        )
 
     def _client_credentials(self, request, form):
         raise NotImplementedError()
