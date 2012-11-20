@@ -51,20 +51,25 @@ class TokenForm(forms.Form):
     # required by refresh_token
     refresh_token = forms.CharField(required=False)
 
-    def _required_on_grant_types(field, types):
-        def clean_FIELD(self):
-            if self.cleaned_data['grant_type'] in types:
-                if not self.cleaned_data[field]:
-                    raise ValidationError('%s is required' % field)
-            return self.cleaned_data[field]
-        return clean_FIELD
-
-    clean_code = _required_on_grant_types('code', ['authorization_code'])
-    clean_username = _required_on_grant_types('username', ['password'])
-    clean_password = _required_on_grant_types('password', ['password'])
-    _pre_clean_scope = _required_on_grant_types('scope', ['password', 'client_credentials'])
-    clean_refresh_token = _required_on_grant_types('refresh_token', ['refresh_token'])
+    _required_on_grant_type = dict(
+        authorization_code=['code'],
+        password=['username', 'password', 'scope'],
+        client_credentials=['scope'],
+        refresh_token=['refresh_token'],
+    )
 
     def clean_scope(self):
-        scope = self._pre_clean_scope()
-        return parse_scope(scope)
+        scope = self.cleaned_data['scope']
+        if scope:
+            return parse_scope(scope)
+        else:
+            return []
+
+    def clean(self):
+        grant_type = self.cleaned_data.get('grant_type', None)
+        if grant_type:
+            required_fields = self._required_on_grant_type[grant_type]
+            for field in required_fields:
+                if not self.cleaned_data[field]:
+                    raise ValidationError('%s is required' % field)
+        return self.cleaned_data
