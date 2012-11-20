@@ -158,6 +158,7 @@ class OAuth2Token(object):
             token_type='bearer',
             expires_in=expires_in,
             refresh_token=refresh_token,
+            scope=auth.scope,
         )
 
     def _password(self, request, form):
@@ -188,6 +189,7 @@ class OAuth2Token(object):
             token_type='bearer',
             expires_in=expires_in,
             refresh_token=None,
+            scope=scope,
         )
 
     def _client_credentials(self, request, form):
@@ -210,6 +212,7 @@ class OAuth2Token(object):
             token_type='bearer',
             expires_in=expires_in,
             refresh_token=refresh_token,
+            scope=scope,
         )
 
     def client_for_request(self, request, client_id):
