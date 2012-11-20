@@ -41,7 +41,7 @@ class SeparatedValuesField(models.TextField):
 
     def to_python(self, value):
         if not value:
-            return
+            return []
         if isinstance(value, list):
             return value
         return value.split(self.separator)
