@@ -48,9 +48,11 @@ class BearerAuthMiddleware(object):
         if token is None:
             client_id = None
             session = None
+            request.permissions = None
         else:
             client_id, session = self.authenticate_access_token(token)
-        
+            request.permissions = set(session['_fulmine_scope'])
+
         request.client_id = client_id
         if client_id is None:
             request.has_bearer = False

@@ -167,6 +167,8 @@ class OAuth2Token(object):
         if not client_id:
             return OAuth2Error('invalid_client')
 
+        scope = self.limit_scope(client_id, form.cleaned_data['scope'])
+
         from django.contrib.auth import authenticate
         user = authenticate(username=form.cleaned_data['username'],
                             password=form.cleaned_data['password'])
@@ -177,7 +179,7 @@ class OAuth2Token(object):
         grant.user = user
         grant.auth_backend = user.backend
         grant.client_id = client_id
-        grant.scope = form.cleaned_data['scope']
+        grant.scope = scope
 
         expires_in = self.expires_in(grant)
         access_token = grant.new_access_token(expires_in)
@@ -193,7 +195,7 @@ class OAuth2Token(object):
 
     def _refresh_token(self, request, form):
         refresh_token = form.cleaned_data['refresh_token']
-        scope = form.cleaned_data['scope']
+        scope = self.limit_scope(client_id, form.cleaned_data['scope'])
         try:
             refresh = RefreshToken.objects.refreshable(
                 refresh_token=refresh_token,
@@ -252,6 +254,9 @@ class OAuth2Token(object):
         read RFC 6749 (2.3. Client Authentication).
         """
         raise NotImplementedError()
+
+    def limit_scope(self, client_id, scope):
+        return scope
 
     def expires_in(self, grant):
         """

@@ -65,7 +65,7 @@ class AuthorizationGrant(models.Model):
     client_id = models.CharField(max_length=CLIENT_ID_LENGTH, db_index=True)
     auth_backend = models.CharField(max_length=80)
     user = models.ForeignKey(User, db_index=True)
-    scope = SeparatedValuesField(max_length=300)
+    scope = SeparatedValuesField(max_length=SCOPE_LENGTH, blank=True)
     revoked = models.BooleanField(default=False)
 
     objects = AuthorizationGrantManager()
@@ -78,7 +78,7 @@ class AuthorizationGrant(models.Model):
         temp.grant = self
         return temp
 
-    def new_access_token(self, expires_in, deploy_id=''):
+    def new_access_token(self, expires_in, deploy_id='', scope=None):
         access_token = new_access_token()
         session_key, secret = parse_bearer(access_token,
                                            SESSION_KEY_BYTES)
@@ -89,7 +89,11 @@ class AuthorizationGrant(models.Model):
         session['_fulmine_deploy_id'] = deploy_id
         session[CONTRIB_AUTH_SESSION_KEY] = self.user.id
         session[CONTRIB_AUTH_BACKEND_SESSION_KEY] = self.auth_backend
-        session['_fulmine_scope'] = self.scope
+        if scope:
+            token_scope = list(set(scope) & set(self.scope))
+        else:
+            token_scope = self.scope
+        session['_fulmine_scope'] = token_scope
         session['_fulmine_revoked'] = False
         session['_fulmine_grant'] = self.pk
         session.set_expiry(timedelta(seconds=expires_in))
@@ -115,6 +119,7 @@ class TemporaryGrant(models.Model):
                                  primary_key=True)
     expires = models.DateTimeField(default=auth_code_expires)
     grant = models.ForeignKey(AuthorizationGrant)
+    scope = SeparatedValuesField(max_length=SCOPE_LENGTH, blank=True)
     deploy_id = models.CharField(max_length=DEPLOY_ID_LENGTH, blank=True)
     expires = models.DateTimeField(default=auth_code_expires)
     state = models.CharField(max_length=300, blank=True)
@@ -135,7 +140,8 @@ class TemporaryGrant(models.Model):
         self.save()
 
         access_token_text = self.grant.new_access_token(expires_in,
-                                                        deploy_id=self.deploy_id)
+                                                        deploy_id=self.deploy_id,
+                                                        scope=self.scope)
 
         if emit_refresh:
             refresh_token = RefreshToken()
@@ -164,6 +170,7 @@ class RefreshToken(models.Model):
                                      primary_key=True)
     deploy_id = models.CharField(max_length=DEPLOY_ID_LENGTH, blank=True)
     grant = models.ForeignKey(AuthorizationGrant)
+    scope = SeparatedValuesField(max_length=SCOPE_LENGTH, blank=True)
     revoked = models.BooleanField(default=False)
 
     objects = RefreshTokenManager()
@@ -173,7 +180,8 @@ class RefreshToken(models.Model):
             raise Exception('revoked refresh token can\'t be used')
 
         access_token_text = self.grant.new_access_token(expires_in,
-                                                        deploy_id=self.deploy_id)
+                                                        deploy_id=self.deploy_id,
+                                                        scope=self.scope)
 
         if emit_refresh:
             self.revoked = True
@@ -181,6 +189,7 @@ class RefreshToken(models.Model):
             refresh_token = RefreshToken()
             refresh_token.grant = self
             refresh_token.deploy_id = self.deploy_id
+            refresh_token.scope = self.scope
             refresh_token_text = refresh_token.token
             refresh_token.save()
         else:
@@ -292,7 +301,8 @@ class AuthorizationRequest(object):
     def token_redirect(self, expires_in):
         o = urlparse(self.redirect_uri)
 
-        token = self.grant_obj.new_access_token(expires_in)
+        token = self.grant_obj.new_access_token(expires_in,
+                                                scope=self.scope)
         params = dict()
         params['access_token'] = token
         params['token_type'] = 'bearer'
@@ -317,10 +327,6 @@ def get_django_session(session_key):
 scope_re = re.compile(r'^[!#-[\]-~]+$')
 
 def parse_scope(scope):
-    if scope:
-        scopes = scope.split(' ')
-        if any(scope_re.match(s) is None for s in scopes):
-            raise ValidationError('invalid scope')
-        return scopes
-    else:
-        return []
+    if any(scope_re.match(s) is None for s in scope):
+        raise ValidationError('invalid scope')
+    return scope

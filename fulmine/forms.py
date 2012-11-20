@@ -3,12 +3,23 @@ from django.core.exceptions import ValidationError
 
 from fulmine.models import parse_scope
 
+class SeparatedValuesField(forms.CharField):
+    def __init__(self, *args, **kwargs):
+        self.separator = kwargs.pop('separator', ' ')
+        super(SeparatedValuesField, self).__init__(*args, **kwargs)
+
+    def clean(self, value):
+        if not value:
+            return
+        return value.split(self.separator)
+
+
 class AuthorizationForm(forms.Form):
     response_type = forms.ChoiceField(
         choices=[('code', 'code'), ('token', 'token')])
     client_id = forms.CharField()
     redirect_uri = forms.CharField(required=False)
-    scope = forms.CharField(required=False)
+    scope = SeparatedValuesField(required=False)
     state = forms.CharField(required=False)
 
     def clean_scope(self):
@@ -35,7 +46,7 @@ class TokenForm(forms.Form):
     password = forms.CharField(required=False)
 
     # required by password, client_credentials and refresh_token
-    scope = forms.CharField(required=False)
+    scope = SeparatedValuesField(required=False)
 
     # required by refresh_token
     refresh_token = forms.CharField(required=False)

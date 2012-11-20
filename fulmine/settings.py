@@ -47,6 +47,9 @@ def setup_defaults():
     # by default uses 16, but employs a check to avoid key collision.
     SESSION_KEY_BYTES = 24
 
+    # Maximum size of a space separated list of all scope keywords.
+    SCOPE_LENGTH = 120
+
     # override settings with those specified in Django settings file
     # and update django.conf.settings
     for key, value in locals().items():
