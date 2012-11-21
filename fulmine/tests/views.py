@@ -45,8 +45,8 @@ class TestAuthorization(OAuth2Authorization):
 
 class TestToken(OAuth2Token):
     def client_for_request(self, request, client_id):
-        if 'HTTP_X_TEST_CLIENT_AUTH' in request:
-            client = request['HTTP_X_TEST_CLIENT_AUTH']
+        if 'HTTP_X_TEST_CLIENT_AUTH' in request.META:
+            client = request.META['HTTP_X_TEST_CLIENT_AUTH']
             if client in apps:
                 return client
             else:

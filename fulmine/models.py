@@ -147,6 +147,7 @@ class TemporaryGrant(models.Model):
             refresh_token = RefreshToken()
             refresh_token.grant = self.grant
             refresh_token.deploy_id = self.deploy_id
+            refresh_token.scope = self.scope
             refresh_token.save()
             refresh_token_text = refresh_token.token
         else:
@@ -281,6 +282,7 @@ class AuthorizationRequest(object):
         temp.state = self.state
         temp.redirect_uri = self.redirect_uri
         #temp.deploy_id = self.deploy_id
+        temp.scope = self.scope
         temp.save()
 
         o = urlparse(self.redirect_uri)

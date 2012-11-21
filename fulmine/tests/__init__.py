@@ -542,6 +542,7 @@ class Rfc6749Test(TestCase):
             '/token/',
             data=args,
             follow=True,
+            HTTP_X_TEST_CLIENT_AUTH='public',
         )
         self.assertTrue(200 <= response.status_code < 300,
                         'token endpoint must respond with a success code')

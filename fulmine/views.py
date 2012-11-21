@@ -196,14 +196,28 @@ class OAuth2Token(object):
         raise NotImplementedError()
 
     def _refresh_token(self, request, form):
+        client_id = self.client_for_request(request, None)
+
+        if not client_id:
+            return OAuth2Error('invalid_client')
+
         refresh_token = form.cleaned_data['refresh_token']
-        scope = self.limit_scope(client_id, form.cleaned_data['scope'])
+
         try:
             refresh = RefreshToken.objects.refreshable(
                 refresh_token=refresh_token,
             ).get()
         except AuthorizationGrant.DoesNotExist:
             return OAuth2Error('invalid_grant')
+
+        scope = self.limit_scope(client_id, form.cleaned_data['scope'])
+
+        if set(scope) - set(refresh.scope):
+            # client is requesting a scope not originally granted 
+            return OAuth2Error('invalid_scope')
+
+        if set(scope) < set(refresh.scope):
+            refresh.scope = scope
 
         expires_in = self.expires_in(refresh.grant)
         access_token, refresh_token = refresh.emit_token(expires_in)
