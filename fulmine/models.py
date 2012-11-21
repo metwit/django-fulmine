@@ -32,6 +32,26 @@ def auth_code_expires():
     delta = timedelta(seconds=AUTH_CODE_EXPIRE_SECONDS)
     return now + delta
 
+def build_access_token(scope, expires_in, client_id, deploy_id='',
+                       user_id=None, auth_backend=None, grant_id=None):
+    access_token = new_access_token()
+    session_key, secret = parse_bearer(access_token,
+                                       SESSION_KEY_BYTES)
+    session = get_django_session(session_key)
+    session.clear() # otherwise Django would overwrite the session_hey
+    session['_fulmine_secret'] = secret
+    session['_fulmine_client_id'] = client_id
+    session['_fulmine_deploy_id'] = deploy_id
+    session[CONTRIB_AUTH_SESSION_KEY] = user_id
+    session[CONTRIB_AUTH_BACKEND_SESSION_KEY] = auth_backend
+    session['_fulmine_scope'] = scope
+    session['_fulmine_revoked'] = False
+    session['_fulmine_grant'] = grant_id
+    session.set_expiry(timedelta(seconds=expires_in))
+    session.save(must_create=True)
+    return unicode(access_token)
+
+
 class SeparatedValuesField(models.TextField):
     __metaclass__ = models.SubfieldBase
 
@@ -79,26 +99,20 @@ class AuthorizationGrant(models.Model):
         return temp
 
     def new_access_token(self, expires_in, deploy_id='', scope=None):
-        access_token = new_access_token()
-        session_key, secret = parse_bearer(access_token,
-                                           SESSION_KEY_BYTES)
-        session = get_django_session(session_key)
-        session.clear() # otherwise Django would overwrite the session_hey
-        session['_fulmine_secret'] = secret
-        session['_fulmine_client_id'] = self.client_id
-        session['_fulmine_deploy_id'] = deploy_id
-        session[CONTRIB_AUTH_SESSION_KEY] = self.user.id
-        session[CONTRIB_AUTH_BACKEND_SESSION_KEY] = self.auth_backend
         if scope:
             token_scope = list(set(scope) & set(self.scope))
         else:
             token_scope = self.scope
-        session['_fulmine_scope'] = token_scope
-        session['_fulmine_revoked'] = False
-        session['_fulmine_grant'] = self.pk
-        session.set_expiry(timedelta(seconds=expires_in))
-        session.save(must_create=True)
-        return unicode(access_token)
+
+        return build_access_token(
+            client_id=self.client_id,
+            deploy_id=deploy_id,
+            expires_in=expires_in,
+            scope=token_scope,
+            user_id=self.user.id,
+            auth_backend=self.auth_backend,
+            grant_id=self.pk,
+        )
 
 
 class TemporaryGrantManager(models.Manager):

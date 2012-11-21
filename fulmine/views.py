@@ -11,6 +11,7 @@ from fulmine.models import (
     AuthorizationRequest,
     TemporaryGrant,
     RefreshToken,
+    build_access_token,
 )
 
 class JsonResponse(HttpResponse):
@@ -193,7 +194,28 @@ class OAuth2Token(object):
         )
 
     def _client_credentials(self, request, form):
-        raise NotImplementedError()
+        client_id = self.client_for_request(request, None)
+
+        if not client_id:
+            return OAuth2Error('invalid_client')
+
+        scope = self.limit_scope(client_id, form.cleaned_data['scope'])
+
+        expires_in = self.expires_in(grant)
+
+        access_token = build_access_token(
+            client_id=client_id,
+            expires_in=expires_in,
+            scope=scope,
+        )
+
+        return dict(
+            access_token=access_token,
+            token_type='bearer',
+            expires_in=expires_in,
+            refresh_token=None,
+            scope=scope,
+        )
 
     def _refresh_token(self, request, form):
         client_id = self.client_for_request(request, None)
