@@ -48,22 +48,22 @@ class BearerAuthMiddleware(object):
         if token is None:
             client_id = None
             session = None
-            request.permissions = None
         else:
             client_id, session = self.authenticate_access_token(token)
-            request.permissions = set(session['_fulmine_scope'])
 
         request.client_id = client_id
         if client_id is None:
             request.has_bearer = False
 
         if session:
+            request.permissions = set(session['_fulmine_scope'])
             # This is an active session and we can use it like
             # a session provided by django.contrib.sessions,
             # and actually persist it.
             request.session = session
             request.session.dont_persist = False
         else:
+            request.permissions = None
             # We're creating a new session because most Django
             # apps expect one, but there is no associated user
             # so we don't need to actually persist it.
