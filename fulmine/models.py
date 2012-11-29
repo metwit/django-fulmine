@@ -80,6 +80,20 @@ class AuthorizationGrantManager(models.Manager):
     def active(self):
         return self.filter(revoked=False)
 
+    def grant_or_update(self, client_id, auth_backend, user, scope):
+        obj, created = self.get_or_create(
+            client_id=client_id,
+            user=user,
+            defaults=dict(auth_backend=auth_backend, scope=scope),
+        )
+
+        if not created:
+            if scope - obj.scope:
+                obj.scope = list(set(scope) | set(obj.scope))
+                obj.save()
+
+        return obj
+
 
 class AuthorizationGrant(models.Model):
     client_id = models.CharField(max_length=CLIENT_ID_LENGTH, db_index=True)
@@ -98,13 +112,21 @@ class AuthorizationGrant(models.Model):
         temp.grant = self
         return temp
 
-    def new_access_token(self, expires_in, deploy_id='', scope=None):
+    def emit_token(self, expires_in, emit_refresh=True,
+                   scope=None, deploy_id=None):
+        """
+        Creates, saves and returns an AccessToken and a RefreshToken.
+        The grant will be consumed after the emission.
+        """
+        if self.revoked:
+            raise Exception('revoked grant can\'t emit tokens')
+
         if scope:
             token_scope = list(set(scope) & set(self.scope))
         else:
             token_scope = self.scope
 
-        return build_access_token(
+        access_token_text = build_access_token(
             client_id=self.client_id,
             deploy_id=deploy_id,
             expires_in=expires_in,
@@ -113,6 +135,19 @@ class AuthorizationGrant(models.Model):
             auth_backend=self.auth_backend,
             grant_id=self.pk,
         )
+
+
+        if emit_refresh:
+            refresh_token = RefreshToken()
+            refresh_token.grant = self
+            refresh_token.deploy_id = deploy_id
+            refresh_token.scope = scope
+            refresh_token.save()
+            refresh_token_text = refresh_token.token
+        else:
+            refresh_token_text = None
+
+        return access_token_text, refresh_token_text
 
 
 class TemporaryGrantManager(models.Manager):
@@ -143,31 +178,18 @@ class TemporaryGrant(models.Model):
     objects = TemporaryGrantManager()
 
     def emit_token(self, expires_in, emit_refresh=True):
-        """
-        Creates, saves and returns an AccessToken and a RefreshToken.
-        The grant will be consumed after the emission.
-        """
         if self.consumed:
             raise Exception('consumed grant can\'t emit tokens')
 
         self.consumed = True
         self.save()
 
-        access_token_text = self.grant.new_access_token(expires_in,
-                                                        deploy_id=self.deploy_id,
-                                                        scope=self.scope)
-
-        if emit_refresh:
-            refresh_token = RefreshToken()
-            refresh_token.grant = self.grant
-            refresh_token.deploy_id = self.deploy_id
-            refresh_token.scope = self.scope
-            refresh_token.save()
-            refresh_token_text = refresh_token.token
-        else:
-            refresh_token_text = None
-
-        return access_token_text, refresh_token_text
+        return self.grant.emit_token(
+            expires_in=expires_in,
+            deploy_id=self.deploy_id,
+            scope=self.scope,
+            emit_refresh=emit_refresh
+        )
 
 
 class RefreshTokenManager(models.Manager):
@@ -194,24 +216,16 @@ class RefreshToken(models.Model):
         if self.revoked:
             raise Exception('revoked refresh token can\'t be used')
 
-        access_token_text = self.grant.new_access_token(expires_in,
-                                                        deploy_id=self.deploy_id,
-                                                        scope=self.scope)
-
         if emit_refresh:
             self.revoked = True
             self.save()
-            refresh_token = RefreshToken()
-            refresh_token.grant = self
-            refresh_token.deploy_id = self.deploy_id
-            refresh_token.scope = self.scope
-            refresh_token_text = refresh_token.token
-            refresh_token.save()
-        else:
-            refresh_token_text = None
 
-        return access_token_text, refresh_token_text
-
+        return self.grant.emit_token(
+            expires_in=expires_in,
+            deploy_id=self.deploy_id,
+            scope=self.scope,
+            emit_refresh=emit_refresh,
+        )
 
 class AuthorizationRequest(object):
     def __init__(self, response_type, client_id,
@@ -276,20 +290,14 @@ class AuthorizationRequest(object):
         )
 
     def grant(self, request):
-        grant, created = AuthorizationGrant.objects.get_or_create(
-            client_id=self.client_id, user=request.user,
-            defaults=dict(
-                auth_backend=request.session[CONTRIB_AUTH_BACKEND_SESSION_KEY],
-                scope=self.scope,
-        ))
+        grant = AuthorizationGrant.objects.grant_or_update(
+            client_id=self.client_id,
+            user=request.user,
+            auth_backend=request.session[CONTRIB_AUTH_BACKEND_SESSION_KEY],
+            scope=self.scope,
+        )
         self.grant_obj = grant
-        if not created:
-            self.update_scope()
         return grant
-
-    def update_scope(self):
-        # TODO: update scope
-        pass
 
     def code_redirect(self):
         temp = self.grant_obj.new_auth_code()
@@ -317,8 +325,11 @@ class AuthorizationRequest(object):
     def token_redirect(self, expires_in):
         o = urlparse(self.redirect_uri)
 
-        token = self.grant_obj.new_access_token(expires_in,
-                                                scope=self.scope)
+        token, refresh = self.grant_obj.emit_token(
+            expires_in=expires_in,
+            scope=self.scope,
+            emit_refresh=False,
+        )
         params = dict()
         params['access_token'] = token
         params['token_type'] = 'bearer'

@@ -177,14 +177,20 @@ class OAuth2Token(object):
         if not user:
             raise OAuth2Error('invalid_grant')
 
-        grant = AuthorizationGrant()
-        grant.user = user
-        grant.auth_backend = user.backend
-        grant.client_id = client_id
-        grant.scope = scope
+        grant = AuthorizationGrant.objects.grant_or_update(
+            user=user,
+            client_id=client_id,
+            auth_backend=user.backend,
+            scope=scope,
+        )
 
         expires_in = self.expires_in(grant)
-        access_token = grant.new_access_token(expires_in)
+        access_token = grant.emit_token(
+            expires_in=expires_in,
+            scope=scope,
+            emit_refresh=True,
+        )
+
         return dict(
             access_token=access_token,
             token_type='bearer',
@@ -229,7 +235,7 @@ class OAuth2Token(object):
             refresh = RefreshToken.objects.refreshable(
                 refresh_token=refresh_token,
             ).get()
-        except AuthorizationGrant.DoesNotExist:
+        except RefreshToken.DoesNotExist:
             return OAuth2Error('invalid_grant')
 
         scope = self.limit_scope(client_id, form.cleaned_data['scope'])
