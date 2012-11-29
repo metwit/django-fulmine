@@ -634,6 +634,41 @@ class Rfc6749Test(TestCase):
             # test view returns the scope
             self.assertEqual(response.content, 'scope1 scope2')
 
+    def test_password_token(self):
+        # 2) get an access token via password grant_type
+        self.client = Client()
+        args = dict(
+            grant_type='password',
+            username='testuser',
+            password='test',
+            scope='read_all write_all',
+        )
+        response = self.client.post(
+            '/token/',
+            data=args,
+            follow=True,
+            HTTP_X_TEST_CLIENT_AUTH='confidential',
+        )
+        self.assertTrue(200 <= response.status_code < 300,
+                        'token endpoint must respond with a success code')
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertEqual(response['Pragma'], 'no-cache')
+        self.assertEqual(response['Content-type'], 'application/json')
+        content = json.loads(response.content)
+        self.assertIn('access_token', content)
+        self.assertIn('token_type', content)
+        self.assertEqual(content['token_type'], 'bearer')
+        access_token = content['access_token']
+
+        # 3) test the token is valid
+        with resource_server_settings():
+            client = Client(enforce_csrf_checks=True)
+            response = client.get('/resource/',
+                HTTP_AUTHORIZATION='Bearer %s' % access_token)
+            # test view returns client_id:username if authentication
+            # is ok, "FAIL" otherwise
+            self.assertEqual(response.content, 'confidential:testuser')
+
 
 class BearerAuthTestMiddleware(BearerAuthMiddleware):
     def is_oauth_request(self, request):

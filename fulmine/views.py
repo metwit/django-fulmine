@@ -185,7 +185,7 @@ class OAuth2Token(object):
         )
 
         expires_in = self.expires_in(grant)
-        access_token = grant.emit_token(
+        access_token, refresh_token = grant.emit_token(
             expires_in=expires_in,
             scope=scope,
             emit_refresh=True,
@@ -195,7 +195,7 @@ class OAuth2Token(object):
             access_token=access_token,
             token_type='bearer',
             expires_in=expires_in,
-            refresh_token=None,
+            refresh_token=refresh_token,
             scope=scope,
         )
 

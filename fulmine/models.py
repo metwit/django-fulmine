@@ -113,7 +113,7 @@ class AuthorizationGrant(models.Model):
         return temp
 
     def emit_token(self, expires_in, emit_refresh=True,
-                   scope=None, deploy_id=None):
+                   scope=None, deploy_id=''):
         """
         Creates, saves and returns an AccessToken and a RefreshToken.
         The grant will be consumed after the emission.
