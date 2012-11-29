@@ -162,7 +162,9 @@ class Rfc6749Test(TestCase):
             data=args,
             HTTP_REFERER=endpoint_path,
         )
-        self.assertEqual(response.status_code, 400, 'auth grant must give an error')
+        self.assertEqual(response.status_code, 400,
+                         'auth grant must give error 400, got status = %s'
+                         % response.status_code)
 
     def test_authcode_authorization_csrf(self):
         self.client = Client(enforce_csrf_checks=True)
@@ -563,6 +565,74 @@ class Rfc6749Test(TestCase):
             # test view returns client_id:username if authentication
             # is ok, "FAIL" otherwise
             self.assertEqual(response.content, 'public:testuser')
+
+    def test_update_scope(self):
+        self.client.login(username='testuser', password='test')
+        # 1) grant a scope
+        redirect_uri = 'http://example.com/destination?par1=val1'
+        args = dict(
+            response_type='code',
+            client_id='public',
+            redirect_uri=redirect_uri,
+            scope='scope1',
+            state='abcdef1234567890'
+        )
+        self.client.get('/authorize/', data=args,
+                        HTTP_REFERER='http://example.com/source/')
+        response = self.client.post(
+            '/authorize/',
+            data=args,
+        )
+
+        # 2) grant a broader scope and get the authorization code
+        args['scope'] = 'scope1 scope2'
+        self.client.get('/authorize/', data=args,
+                        HTTP_REFERER='http://example.com/source/')
+        response = self.client.post(
+            '/authorize/',
+            data=args,
+        )
+        o = urlparse(response['Location'])
+        redirect_args = parse_qs(o.query)
+        auth_code, = redirect_args['code']
+
+        # 2) exchange it for a token
+        self.client = Client()
+        args = dict(
+            grant_type='authorization_code',
+            client_id='public',
+            code=auth_code,
+            redirect_uri=redirect_uri,
+        )
+        response = self.client.post(
+            '/token/',
+            data=args,
+            follow=True,
+        )
+        self.assertTrue(200 <= response.status_code < 300,
+                        'token endpoint must respond with a success code')
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertEqual(response['Pragma'], 'no-cache')
+        self.assertEqual(response['Content-type'], 'application/json')
+        content = json.loads(response.content)
+        self.assertIn('access_token', content)
+        self.assertIn('token_type', content)
+        self.assertEqual(content['token_type'], 'bearer')
+        access_token = content['access_token']
+
+        # 3) test the token is valid and has the right scope
+        with resource_server_settings():
+            client = Client(enforce_csrf_checks=True)
+            response = client.get('/resource/',
+                HTTP_AUTHORIZATION='Bearer %s' % access_token)
+            # test view returns client_id:username if authentication
+            # is ok, "FAIL" otherwise
+            self.assertEqual(response.content, 'public:testuser')
+
+            response = client.get('/scope/',
+                HTTP_AUTHORIZATION='Bearer %s' % access_token)
+            # test view returns the scope
+            self.assertEqual(response.content, 'scope1 scope2')
 
 
 class BearerAuthTestMiddleware(BearerAuthMiddleware):

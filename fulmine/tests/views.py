@@ -68,3 +68,6 @@ def protected_resource(request):
                                        request.user.username))
     else:
         return HttpResponse("FAIL")
+
+def scope_resource(request):
+    return HttpResponse(' '.join(sorted(request.permissions)))

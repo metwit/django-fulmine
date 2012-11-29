@@ -88,7 +88,7 @@ class AuthorizationGrantManager(models.Manager):
         )
 
         if not created:
-            if scope - obj.scope:
+            if set(scope) - set(obj.scope):
                 obj.scope = list(set(scope) | set(obj.scope))
                 obj.save()
 
