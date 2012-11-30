@@ -719,6 +719,44 @@ class Rfc6749Test(TestCase):
             # is ok, "FAIL" otherwise
             self.assertEqual(response.content, 'magic:')
 
+    def test_authcode_empty_scope(self):
+        self.client.login(username='testuser', password='test')
+        # 1) RO UA opens authorization endpoint
+        endpoint_path = '/authorize/'
+        args = dict(
+            response_type='code',
+            client_id='1234',
+            redirect_uri='http://example.com/destination?par1=val1',
+            scope='',
+            state='abcdef1234567890'
+        )
+        response = self.client.get(
+            endpoint_path,
+            data=args,
+            HTTP_REFERER='http://example.com/source/',
+        )
+
+        # 2) RO grants authorization
+        response = self.client.post(
+            endpoint_path,
+            data=args,
+            HTTP_REFERER=endpoint_path,
+        )
+        self.assertEqual(response.status_code,
+                          302,
+                          'grant endpoint must redirect to redirect_uri')
+        o = urlparse(response['Location'])
+        self.assertEqual(o.scheme, 'http')
+        self.assertEqual(o.netloc, 'example.com')
+        self.assertEqual(o.path, '/destination')
+        self.assertEqual(o.fragment, '')
+        redirect_args = parse_qs(o.query)
+        self.assertEqual(redirect_args['par1'], ['val1'])
+        self.assertIn('code', redirect_args)
+        self.assertIn('state', redirect_args)
+        self.assertEqual(redirect_args['state'], [args['state']])
+        auth_code, = redirect_args['code']
+
 
 class BearerAuthTestMiddleware(BearerAuthMiddleware):
     def is_oauth_request(self, request):

@@ -69,7 +69,7 @@ class SeparatedValuesField(models.TextField):
 
     def get_db_prep_value(self, value, connection, prepared=False):
         if not value:
-            return
+            return ''
         return self.separator.join([unicode(s) for s in value])
 
     def value_to_string(self, obj):

@@ -10,7 +10,7 @@ class SeparatedValuesField(forms.CharField):
 
     def clean(self, value):
         if not value:
-            return
+            return []
         return value.split(self.separator)
 
 
