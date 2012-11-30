@@ -42,8 +42,9 @@ def build_access_token(scope, expires_in, client_id, deploy_id='',
     session['_fulmine_secret'] = secret
     session['_fulmine_client_id'] = client_id
     session['_fulmine_deploy_id'] = deploy_id
-    session[CONTRIB_AUTH_SESSION_KEY] = user_id
-    session[CONTRIB_AUTH_BACKEND_SESSION_KEY] = auth_backend
+    if user_id:
+        session[CONTRIB_AUTH_SESSION_KEY] = user_id
+        session[CONTRIB_AUTH_BACKEND_SESSION_KEY] = auth_backend
     session['_fulmine_scope'] = scope
     session['_fulmine_revoked'] = False
     session['_fulmine_grant'] = grant_id

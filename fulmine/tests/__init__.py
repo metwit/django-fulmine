@@ -6,7 +6,7 @@ from django.conf import settings, UserSettingsHolder
 from django.contrib.auth.models import User
 from django.test import Client, RequestFactory, TestCase
 
-from fulmine.forms import TokenForm
+from fulmine.forms import make_token_form
 from fulmine.middleware import BearerAuthMiddleware
 from fulmine.models import AuthorizationGrant
 from fulmine.timeutils import mock_time
@@ -669,6 +669,56 @@ class Rfc6749Test(TestCase):
             # is ok, "FAIL" otherwise
             self.assertEqual(response.content, 'confidential:testuser')
 
+    def test_token_unsupported_grant_type(self):
+        self.client = Client()
+        args = dict(
+            grant_type='does_not_exist',
+            username='testuser',
+            password='test',
+            scope='read_all write_all',
+        )
+        response = self.client.post(
+            '/token/',
+            data=args,
+            follow=True,
+            HTTP_X_TEST_CLIENT_AUTH='confidential',
+        )
+        self.assertEqual(400, response.status_code)
+        content = json.loads(response.content)
+        self.assertEqual(content['error'], 'unsupported_grant_type')
+
+    def test_extra_grant_type_token(self):
+        # 1) get an access token via an extra grant type
+        self.client = Client()
+        args = dict(
+            grant_type='magic_number',
+            magic_number='42',
+        )
+        response = self.client.post(
+            '/token_extra/',
+            data=args,
+            follow=True,
+        )
+        self.assertTrue(200 <= response.status_code < 300,
+                        'token endpoint must respond with a success code')
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertEqual(response['Pragma'], 'no-cache')
+        self.assertEqual(response['Content-type'], 'application/json')
+        content = json.loads(response.content)
+        self.assertIn('access_token', content)
+        self.assertIn('token_type', content)
+        self.assertEqual(content['token_type'], 'bearer')
+        access_token = content['access_token']
+
+        # 2) test the token is valid
+        with resource_server_settings():
+            client = Client(enforce_csrf_checks=True)
+            response = client.get('/resource/',
+                HTTP_AUTHORIZATION='Bearer %s' % access_token)
+            # test view returns client_id:username if authentication
+            # is ok, "FAIL" otherwise
+            self.assertEqual(response.content, 'magic:')
+
 
 class BearerAuthTestMiddleware(BearerAuthMiddleware):
     def is_oauth_request(self, request):
@@ -741,7 +791,10 @@ class FormsTest(TestCase):
         )
         for scope_arg, scope in scopes:
             form_data['scope'] = scope_arg
-            form = TokenForm(form_data)
+            form_class = make_token_form('authorization_code',
+                required_fields=['scope'],
+            )
+            form = form_class(form_data)
             self.assertTrue(form.is_valid(),
                 "scope string %r should validate" % scope_arg)
             self.assertEqual(set(form.cleaned_data['scope']),
@@ -767,7 +820,10 @@ class FormsTest(TestCase):
         )
         for scope_arg in scopes:
             form_data['scope'] = scope_arg
-            form = TokenForm(form_data)
+            form_class = make_token_form('authorization_code',
+                required_fields=['scope'],
+            )
+            form = form_class(form_data)
             self.assertFalse(form.is_valid(),
                 "scope string %r should result in an error" % scope_arg)
             self.assertIn('scope', form.errors)

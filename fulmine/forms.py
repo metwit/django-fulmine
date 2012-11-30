@@ -27,49 +27,67 @@ class AuthorizationForm(forms.Form):
         return parse_scope(scope)
 
 
-class TokenForm(forms.Form):
-    grant_type = forms.ChoiceField(
-        choices=[
-            ('authorization_code', 'authorization_code'),
-            ('password', 'password'),
-            ('client_credentials', 'client_credentials'),
-            ('refresh_token', 'refresh_token'),
-        ])
+def clean_scope(form):
+    scope = form.cleaned_data['scope']
+    return parse_scope(scope)
 
-    # required by authorization_code
-    code = forms.CharField(required=False)
-    redirect_uri = forms.CharField(required=False)
-    client_id = forms.CharField(required=False)
+def make_token_form(grant_type, required_fields=[], optional_fields=[],
+                    django_fields={}):
 
-    # required by password
-    username = forms.CharField(required=False)
-    password = forms.CharField(required=False)
+    class_dict = dict()
 
-    # required by password, client_credentials and refresh_token
-    scope = SeparatedValuesField(required=False)
-
-    # required by refresh_token
-    refresh_token = forms.CharField(required=False)
-
-    _required_on_grant_type = dict(
-        authorization_code=['code'],
-        password=['username', 'password', 'scope'],
-        client_credentials=['scope'],
-        refresh_token=['refresh_token'],
-    )
-
-    def clean_scope(self):
-        scope = self.cleaned_data['scope']
-        if scope:
-            return parse_scope(scope)
+    for field_name in optional_fields:
+        if field_name == 'scope':
+            field = SeparatedValuesField(required=False)
         else:
-            return []
+            field = forms.CharField(required=False)
 
-    def clean(self):
-        grant_type = self.cleaned_data.get('grant_type', None)
-        if grant_type:
-            required_fields = self._required_on_grant_type[grant_type]
-            for field in required_fields:
-                if not self.cleaned_data[field]:
-                    raise ValidationError('%s is required' % field)
-        return self.cleaned_data
+        class_dict[field_name] = field
+
+    for field_name in required_fields:
+        if field_name == 'scope':
+            field = SeparatedValuesField(required=True)
+        else:
+            field = forms.CharField(required=True)
+
+        class_dict[field_name] = field
+
+    for field_name, field in django_fields.iteritems():
+        class_dict[field_name] = field
+
+    class_dict['clean_scope'] = clean_scope
+
+    cls = type('%sTokenForm' % grant_type,
+               (forms.Form, ),
+               class_dict
+              )
+
+    return cls
+
+AuthorizationCodeTokenForm = make_token_form('authorization_code',
+    required_fields=[
+        'code',
+    ],
+    optional_fields=[
+        'redirect_uri',
+        'client_id',
+        'scope',
+    ]
+)
+
+PasswordTokenForm = make_token_form('password',
+    required_fields=[
+        'username',
+        'password',
+        'scope',
+    ]
+)
+
+ClientCredentialsTokenForm = make_token_form('client_credentials',
+    required_fields=['scope'],
+)
+
+RefreshTokenTokenForm = make_token_form('refresh_token',
+    required_fields=['refresh_token'],
+    optional_fields=['scope']
+)

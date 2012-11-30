@@ -5,7 +5,13 @@ from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedire
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_http_methods
 
-from fulmine.forms import AuthorizationForm, TokenForm
+from fulmine.forms import (
+    AuthorizationForm,
+    AuthorizationCodeTokenForm,
+    PasswordTokenForm,
+    ClientCredentialsTokenForm,
+    RefreshTokenTokenForm,
+)
 from fulmine.models import (
     AuthorizationGrant,
     AuthorizationRequest,
@@ -102,6 +108,18 @@ class OAuth2Authorization(object):
 class OAuth2Token(object):
     default_expires_in = 3600
 
+    extra_grant_types = {}
+    grant_types = {
+        'authorization_code': AuthorizationCodeTokenForm,
+        'password': PasswordTokenForm,
+        'client_credentials': ClientCredentialsTokenForm,
+        'refresh_token': RefreshTokenTokenForm,
+    }
+
+    def __init__(self):
+        self.grant_types = self.__class__.grant_types.copy()
+        self.grant_types.update(self.__class__.extra_grant_types)
+
     def as_view(self):
         @require_http_methods(['POST'])
         @csrf_exempt
@@ -110,15 +128,13 @@ class OAuth2Token(object):
         return OAuth2Token_view
 
     def call_view(self, request):
-        form = TokenForm(request.POST)
+        grant_type = request.POST.get('grant_type', None)
+        if grant_type not in self.grant_types:
+                return OAuth2Error('unsupported_grant_type')
+
+        form = self.grant_types[grant_type](request.POST)
         if form.is_valid():
-            grant_type = form.cleaned_data['grant_type']
-            method = dict(
-                authorization_code=self._authorization_code,
-                password=self._password,
-                client_credentials=self._client_credentials,
-                refresh_token=self._refresh_token,
-            )[grant_type]
+            method = getattr(self, '_%s' % grant_type)
             token_response = method(request, form)
             if not isinstance(token_response, HttpResponse):
                 response = JsonResponse(token_response)
@@ -129,10 +145,7 @@ class OAuth2Token(object):
             else:
                 return token_response
         else:
-            if 'grant_type' in form.errors:
-                return OAuth2Error('unsupported_grant_type')
-            else:
-                return OAuth2Error('invalid_request')
+            return OAuth2Error('invalid_request')
 
     def _authorization_code(self, request, form):
         auth_code = form.cleaned_data['code']
@@ -163,8 +176,7 @@ class OAuth2Token(object):
         )
 
     def _password(self, request, form):
-        client_id = self.client_for_request(request,
-                                            form.cleaned_data['client_id'])
+        client_id = self.client_for_request(request, None)
 
         if not client_id:
             return OAuth2Error('invalid_client')
@@ -207,7 +219,7 @@ class OAuth2Token(object):
 
         scope = self.limit_scope(client_id, form.cleaned_data['scope'])
 
-        expires_in = self.expires_in(grant)
+        expires_in = self.expires_in(None)
 
         access_token = build_access_token(
             client_id=client_id,
