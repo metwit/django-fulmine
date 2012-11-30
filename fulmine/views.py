@@ -20,6 +20,9 @@ from fulmine.models import (
     build_access_token,
 )
 
+import logging
+logger = logging.getLogger('django_fulmine')
+
 class JsonResponse(HttpResponse):
     def __init__(self, json_dict):
         content = json.dumps(json_dict)
@@ -47,7 +50,11 @@ class OAuth2Authorization(object):
         @require_http_methods(['GET', 'POST'])
         @csrf_protect
         def OAuth2Authorization_view(*args, **kwargs):
-            return self.call_view(*args, **kwargs)
+            try:
+                return self.call_view(*args, **kwargs)
+            except Exception as ex:
+                logger.exception(ex)
+                raise
         return OAuth2Authorization_view
 
     def call_view(self, request):
@@ -124,7 +131,11 @@ class OAuth2Token(object):
         @require_http_methods(['POST'])
         @csrf_exempt
         def OAuth2Token_view(*args, **kwargs):
-            return self.call_view(*args, **kwargs)
+            try:
+                return self.call_view(*args, **kwargs)
+            except Exception as ex:
+                logger.exception(ex)
+                raise
         return OAuth2Token_view
 
     def call_view(self, request):
