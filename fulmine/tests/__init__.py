@@ -692,6 +692,38 @@ class Rfc6749Test(TestCase):
         content = json.loads(response.content)
         self.assertEqual(content['error'], 'unsupported_grant_type')
 
+    def test_client_credentials_token(self):
+        # 1) get an access token via client_credentials grant_type
+        self.client = Client()
+        args = dict(
+            grant_type='client_credentials',
+        )
+        response = self.client.post(
+            '/token/',
+            data=args,
+            follow=True,
+            HTTP_X_TEST_CLIENT_AUTH='confidential',
+        )
+        self.assertTrue(200 <= response.status_code < 300,
+                        'token endpoint must respond with a success code')
+        self.assertEqual(response['Cache-Control'], 'no-store')
+        self.assertEqual(response['Pragma'], 'no-cache')
+        self.assertEqual(response['Content-type'], 'application/json')
+        content = json.loads(response.content)
+        self.assertIn('access_token', content)
+        self.assertIn('token_type', content)
+        self.assertEqual(content['token_type'], 'bearer')
+        access_token = content['access_token']
+
+        # 2) test the token is valid
+        with resource_server_settings():
+            client = Client(enforce_csrf_checks=True)
+            response = client.get('/resource/',
+                HTTP_AUTHORIZATION='Bearer %s' % access_token)
+            # test view returns client_id:username if authentication
+            # is ok, "FAIL" otherwise
+            self.assertEqual(response.content, 'confidential:')
+
     def test_extra_grant_type_token(self):
         # 1) get an access token via an extra grant type
         self.client = Client()
