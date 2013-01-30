@@ -17,6 +17,13 @@ from fulmine.settings import *
 from fulmine.timeutils import utcnow
 from fulmine.tokens import parse_bearer, random_b64, Token
 
+try:
+    from south.modelsinspector import add_introspection_rules
+    add_introspection_rules([], ["^fulmine\.models\.SeparatedValuesField"])
+except ImportError:
+    # no south, just carry on
+    pass
+
 
 def new_auth_code():
     return random_b64(AUTH_CODE_BYTES)
