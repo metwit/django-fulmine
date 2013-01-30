@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='django-fulmine',
-    version='0.0.1',
+    version='0.1.0',
     packages=[
         'fulmine',
         'fulmine.tests',
@@ -12,7 +12,7 @@ setup(
     author_email='davide@metwit.com',
     url='http://github.com/sorcio/django-fulmine',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Framework :: Django',
         'Intended Audience :: Developers',
