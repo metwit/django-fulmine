@@ -247,20 +247,16 @@ class OAuth2Token(object):
         )
 
     def _refresh_token(self, request, form):
-        client_id = self.client_for_request(request, None)
-
-        if not client_id:
-            return OAuth2Error('invalid_client')
-
         refresh_token = form.cleaned_data['refresh_token']
 
         try:
             refresh = RefreshToken.objects.refreshable(
                 refresh_token=refresh_token,
-            ).get()
+            ).select_related('grant').get()
         except RefreshToken.DoesNotExist:
             return OAuth2Error('invalid_grant')
 
+        client_id = refresh.grant.client_id
         scope = self.limit_scope(client_id, form.cleaned_data['scope'])
 
         if set(scope) - set(refresh.scope):
