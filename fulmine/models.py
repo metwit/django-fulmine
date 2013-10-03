@@ -8,7 +8,6 @@ from django.contrib.auth import (
     SESSION_KEY as CONTRIB_AUTH_SESSION_KEY,
     BACKEND_SESSION_KEY as CONTRIB_AUTH_BACKEND_SESSION_KEY,
 )
-from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.importlib import import_module
@@ -24,6 +23,10 @@ except ImportError:
     # no south, just carry on
     pass
 
+try:
+    USER_MODEL = settings.AUTH_USER_MODEL
+except AttributeError:
+    USER_MODEL = 'auth.User'
 
 def new_auth_code():
     return random_b64(AUTH_CODE_BYTES)
@@ -106,7 +109,7 @@ class AuthorizationGrantManager(models.Manager):
 class AuthorizationGrant(models.Model):
     client_id = models.CharField(max_length=CLIENT_ID_LENGTH, db_index=True)
     auth_backend = models.CharField(max_length=80)
-    user = models.ForeignKey(User, db_index=True)
+    user = models.ForeignKey(USER_MODEL, db_index=True)
     scope = SeparatedValuesField(max_length=SCOPE_LENGTH, blank=True)
     revoked = models.BooleanField(default=False)
 
