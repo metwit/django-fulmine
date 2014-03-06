@@ -198,7 +198,7 @@ class OAuth2Token(object):
         user = authenticate(username=form.cleaned_data['username'],
                             password=form.cleaned_data['password'])
         if not user:
-            raise OAuth2Error('invalid_grant')
+            return OAuth2Error('invalid_grant')
 
         grant = AuthorizationGrant.objects.grant_or_update(
             user=user,
